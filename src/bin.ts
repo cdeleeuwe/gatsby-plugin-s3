@@ -242,6 +242,7 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
                     isKeyInUse[key] = true;
 
                     if (!objectUnchanged) {
+                        console.log(`\nUploading: ${key}`);
                         try {
                             const upload = new S3.ManagedUpload({
                                 service: s3,
@@ -262,6 +263,7 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
 
                             await upload.promise();
                             spinner.text = chalk`Syncing...\n{dim   Uploaded {cyan ${key}}}`;
+                            console.log(`\nUpload done: ${key}`);
                         } catch (ex) {
                             console.error(ex);
                             process.exit(1);
