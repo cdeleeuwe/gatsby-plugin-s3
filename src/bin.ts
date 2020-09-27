@@ -125,7 +125,9 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
             config.bucketName = bucket;
         }
 
-        let httpOptions = {};
+        let httpOptions: any = {
+            timeout: 300000,
+        };
         if (process.env.HTTP_PROXY) {
             httpOptions = {
                 agent: proxy(process.env.HTTP_PROXY),
