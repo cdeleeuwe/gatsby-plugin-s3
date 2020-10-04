@@ -24,7 +24,7 @@ import { createHash } from 'crypto';
 import isCI from 'is-ci';
 import { getS3WebsiteDomainUrl, withoutLeadingSlash } from './util';
 import { AsyncFunction, asyncify, parallelLimit } from 'async';
-// import proxy from 'proxy-agent';
+import proxy from 'proxy-agent';
 import globToRegExp from 'glob-to-regexp';
 
 const pe = new PrettyError();
@@ -125,14 +125,14 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
             config.bucketName = bucket;
         }
 
-        const httpOptions = {
+        let httpOptions: any = {
             timeout: 300000,
         };
-        // if (process.env.HTTP_PROXY) {
-        //     httpOptions = {
-        //         agent: proxy(process.env.HTTP_PROXY),
-        //     };
-        // }
+        if (process.env.HTTP_PROXY) {
+            httpOptions = {
+                agent: proxy(process.env.HTTP_PROXY),
+            };
+        }
 
         const s3 = new S3({
             region: config.region,
@@ -213,10 +213,17 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
         spinner.text = 'Listing objects...';
         spinner.color = 'green';
         const objects = await listAllObjects(s3, config.bucketName, config.bucketPrefix);
-        const keyToETagMap = objects.reduce((acc: { [key: string]: string }, curr: S3.Object) => {
-            acc[curr.Key!] = curr.ETag!;
+        const keyToETagMap = objects.reduce((acc: { [key: string]: S3.Object }, curr: S3.Object) => {
+            acc[curr.Key!] = curr;
             return acc;
         }, {});
+
+        // Only check etag for files larger than 5mb, else check filename
+        const objectIsUnchanged = (key: string, hash: string) => {
+            const s3Obj = keyToETagMap[key];
+            if (!s3Obj) return false;
+            return s3Obj.Size! < 5000000 ? s3Obj.ETag === hash : true;
+        };
 
         spinner.color = 'cyan';
         spinner.text = '';
@@ -239,12 +246,12 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
                     const data = await streamToPromise(hashStream);
 
                     const tag = `"${data}"`;
-                    const objectUnchanged = keyToETagMap[key] === tag;
+                    const objectUnchanged = objectIsUnchanged(key, tag);
 
                     isKeyInUse[key] = true;
 
                     if (!objectUnchanged) {
-                        console.log(`\npload start: ${key}`);
+                        console.log(`\nUpload start: ${key}`);
                         try {
                             const upload = new S3.ManagedUpload({
                                 service: s3,
@@ -292,7 +299,7 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
                     const tag = `"${createHash('md5')
                         .update(redirectLocation)
                         .digest('hex')}"`;
-                    const objectUnchanged = keyToETagMap[key] === tag;
+                    const objectUnchanged = objectIsUnchanged(key, tag);
 
                     isKeyInUse[key] = true;
 
