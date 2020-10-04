@@ -24,7 +24,7 @@ import { createHash } from 'crypto';
 import isCI from 'is-ci';
 import { getS3WebsiteDomainUrl, withoutLeadingSlash } from './util';
 import { AsyncFunction, asyncify, parallelLimit } from 'async';
-import proxy from 'proxy-agent';
+// import proxy from 'proxy-agent';
 import globToRegExp from 'glob-to-regexp';
 
 const pe = new PrettyError();
@@ -125,14 +125,14 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
             config.bucketName = bucket;
         }
 
-        let httpOptions: any = {
+        const httpOptions = {
             timeout: 300000,
         };
-        if (process.env.HTTP_PROXY) {
-            httpOptions = {
-                agent: proxy(process.env.HTTP_PROXY),
-            };
-        }
+        // if (process.env.HTTP_PROXY) {
+        //     httpOptions = {
+        //         agent: proxy(process.env.HTTP_PROXY),
+        //     };
+        // }
 
         const s3 = new S3({
             region: config.region,
@@ -213,13 +213,13 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
         spinner.text = 'Listing objects...';
         spinner.color = 'green';
         const objects = await listAllObjects(s3, config.bucketName, config.bucketPrefix);
-        const keyToETagMap = objects.reduce((acc: any, curr) => {
-            acc[curr.Key!] = curr.ETag;
+        const keyToETagMap = objects.reduce((acc: { [key: string]: string }, curr: S3.Object) => {
+            acc[curr.Key!] = curr.ETag!;
             return acc;
         }, {});
 
         spinner.color = 'cyan';
-        spinner.text = 'Syncing...';
+        spinner.text = '';
         const publicDir = resolve('./public');
         const stream = klaw(publicDir);
         const isKeyInUse: { [objectKey: string]: boolean } = {};
@@ -244,7 +244,7 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
                     isKeyInUse[key] = true;
 
                     if (!objectUnchanged) {
-                        console.log(`\nUploading: ${key}`);
+                        console.log(`\npload start: ${key}`);
                         try {
                             const upload = new S3.ManagedUpload({
                                 service: s3,
@@ -259,12 +259,10 @@ const deploy = async ({ yes, bucket, userAgent }: { yes: boolean; bucket: string
                             });
 
                             upload.on('httpUploadProgress', evt => {
-                                spinner.text = chalk`Syncing...
-{dim   Uploading {cyan ${key}} ${evt.loaded.toString()}/${evt.total.toString()}}`;
+                                console.log(`\nUploading: ${key} ${evt.loaded.toString()}/${evt.total.toString()}`);
                             });
 
                             await upload.promise();
-                            spinner.text = chalk`Syncing...\n{dim   Uploaded {cyan ${key}}}`;
                             console.log(`\nUpload done: ${key}`);
                         } catch (ex) {
                             console.error(ex);
